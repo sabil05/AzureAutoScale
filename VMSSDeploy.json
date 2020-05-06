@@ -1,0 +1,233 @@
+{
+   "$schema":"https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+   "contentVersion":"1.0.0.0",
+   "parameters":{
+        "VSSName":{
+           "type": "string"
+           },
+       "scaleName":{
+           "type": "string"
+           },
+      "adminUsername":{
+         "type":"string"
+                 },
+      "adminPassword":{
+         "type": "securestring"
+                },
+          "VNETName":{
+          "type": "string"
+          },
+          "SubNetName":{
+          "type": "string"
+          },
+          "PublicIPName":{
+          "type": "string"
+          },
+          "NSGName":{
+          "type": "string"
+          }
+        },
+   "variables":{
+
+   },
+   "resources":[
+      {
+         "type":"Microsoft.Network/virtualNetworks",
+         "name":"[parameters('VNETName')]",
+         "apiVersion":"2018-11-01",
+         "location":"[resourceGroup().location]",
+         "properties":{
+            "addressSpace":{
+               "addressPrefixes":[
+                  "10.0.0.0/16"
+               ]
+            },
+            "subnets":[
+               {
+                  "name":"[parameters('SubNetName')]",
+                  "properties":{
+                     "addressPrefix":"10.0.0.0/16"
+                  }
+               }
+            ]
+         }
+      },
+              {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2018-08-01",
+      "name": "[parameters('PublicIPName')]",
+      "location": "[resourceGroup().location]",
+       "properties": {
+        "publicIPAddressVersion": "IPv4",
+        "publicIPAllocationMethod": "Dynamic"
+      }
+    },
+        {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2018-12-01",
+      "name": "[parameters('NSGName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "securityRules": [
+         {
+            "name": "default-allow-rdp",
+            "properties": {
+              "priority": 1000,
+              "protocol": "TCP",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "3389"
+            }
+          }
+        ]
+      }
+    },
+      {
+         "type":"Microsoft.Compute/virtualMachineScaleSets",
+         "name": "[parameters('VSSName')]",
+         "apiVersion":"2019-03-01",
+         "location": "[resourceGroup().location]",
+         "dependsOn":[
+            "[concat('Microsoft.Network/virtualNetworks/', parameters('VNETName'))]"
+         ],
+         "sku":{
+            "name":"Standard_A1",
+            "capacity":3
+         },
+         "properties":{
+            "upgradePolicy":{
+               "mode":"Manual"
+            },
+            "virtualMachineProfile":{
+               "storageProfile":{
+                  "imageReference":{
+                     "publisher":"MicrosoftWindowsServer",
+                     "offer":"WindowsServer",
+                     "sku":"2019-Datacenter",
+                     "version":"latest"
+                  }
+               },
+               "osProfile":{
+                  "computerNamePrefix":"vm",
+                  "adminUsername":"[parameters('adminUsername')]",
+                  "adminPassword":"[parameters('adminPassword')]"
+               },
+               "networkProfile":{
+                  "networkInterfaceConfigurations":[
+                     {
+                        "name":"myNic",
+                        "properties":{
+                           "primary":true,
+                                                   "enableAcceleratedNetworking": false,
+                                                   "networkSecurityGroup": {
+                           "id": "[concat('/subscriptions/', subscription().subscriptionId,'/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/networkSecurityGroups/', parameters('NSGName'))]"
+                            },
+                                                                  "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+            "subnet": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId,'/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Network/virtualNetworks/', parameters('VNETName'), '/subnets/', parameters('SubNetName'))]"
+              },
+              "publicIPAddressConfiguration": {
+                            "name": "[parameters('PublicIPName')]",
+                                "properties": {
+                        "idleTimeoutInMinutes": 30
+                }
+                }
+          }
+                  }
+                  ]
+                     }
+
+                        }
+                     ]
+                }
+            }
+                }
+        },
+{
+"type": "microsoft.insights/autoscalesettings",
+"name": "[parameters('scaleName')]",
+"apiVersion": "2015-04-01",
+"location": "[resourceGroup().location]",
+"dependsOn": [
+   "[concat('Microsoft.Compute/virtualMachineScaleSets/', parameters('VSSName'))]"
+],
+    "tags": {},
+        "properties": {
+        "name": "[parameters('scaleName')]",
+        "enabled": true,
+        "targetResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', parameters('VSSName'))]",
+    "profiles": [
+      {
+        "name": "Auto created scale condition 1",
+        "capacity": {
+          "minimum": "1",
+          "maximum": "4",
+          "default": "1"
+        },
+        "rules": [
+          {
+            "metricTrigger": {
+              "metricName": "Percentage CPU",
+			  "metricNamespace": "microsoft.compute/virtualmachinescalesets",
+              "metricResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', parameters('VSSName'))]",
+              "timeGrain": "PT1M",
+              "statistic": "Average",
+              "timeWindow": "PT10M",
+              "timeAggregation": "Average",
+              "operator": "GreaterThan",
+              "threshold": 85
+            },
+            "scaleAction": {
+              "direction": "Increase",
+              "type": "ChangeCount",
+              "value": "1",
+              "cooldown": "PT5M"
+            }
+          },
+	{
+            "metricTrigger": {
+              "metricName": "Percentage CPU",
+			  "metricNamespace": "microsoft.compute/virtualmachinescalesets",
+              "metricResourceUri": "[concat('/subscriptions/',subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Compute/virtualMachineScaleSets/', parameters('VSSName'))]",
+              "timeGrain": "PT1M",
+              "statistic": "Average",
+              "timeWindow": "PT10M",
+              "timeAggregation": "Average",
+              "operator": "LessThan",
+              "threshold": 5
+            },
+            "scaleAction": {
+              "direction": "Decrease",
+              "type": "ChangeCount",
+              "value": "1",
+              "cooldown": "PT5M"
+            }
+          }
+        ]
+      }
+    ],
+	     "notifications": [
+         {
+        "operation": "Scale",
+        "email": {
+          "sendToSubscriptionAdministrator": false,
+          "sendToSubscriptionCoAdministrators": false,
+          "customEmails": [
+              "mohammed.sabil@fujitsu.com"
+              ]
+        }
+		}
+		],
+        "targetResourceLocation": "[resourceGroup().location]"
+  }
+}
+
+]
+
+}
